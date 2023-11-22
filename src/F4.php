@@ -1,8 +1,8 @@
 <?php
-/** version 0.7.0  */
-session_start();
 
-class LOGTYPE
+/** version 0.8.0  */
+
+class LOGLEVEL
 {
     const ERROR = 1;
     const WARN = 2;
@@ -27,26 +27,46 @@ class LOGTYPE
 class F4
 {
 
+    /************************************************************************80
+		GENERAL STUFF
+		constructor, variables, generic functions etc.
+     ************************************************************************/
+
     private $LogLevel;
     private $LogFile;
     public $aPublicErrors;  // error-info available for end-user
-    
-    function __construct(int $level, $logdir)
+
+    //***********************************************************************
+    // NOTE: to use named arguments, PHP8+ is required
+    function __construct(string $logdir, string $logfile = 'f4log_', int $loglevel = 1, bool $debug = FALSE)
     {
-        $this->LogLevel = $level;
-        $this->LogFile = $logdir .'f4log_' . date('Ymd') . '.log';
+        if ($debug) {
+            /*	DISPLAY ERRORS */
+            ini_set('display_errors', 1);
+            ini_set('display_startup_errors', 1);
+            error_reporting(E_ALL);
+        }
+        if (!is_dir($logdir)) die('F4: Invalid logdir');
+        $this->LogLevel = $loglevel;
+        $this->LogFile = $logdir . $logfile . date('Ymd') . '.log';
         $this->aPublicErrors = [];
+        $this->session();
     }
 
+    //***********************************************************************
+    // The Cookie Law is a piece of privacy legislation that requires websites to get consent from visitors to store or retrieve any information on a computer, smartphone or tablet.
+    // There are other technologies, like Flash and HTML5 Local Storage that do similar things, and these are also covered by the legislation, but as cookies are the most common technology in use, it has become known as the Cookie Law.
+    // Make sure your page has some cookie-option or notification
+    private function session()
+    {
+        session_start();
+    }
 
-    /************************************************************************80
-		METHOD DESCRIPTION:
-		This function should ...
-	*/
+    //***********************************************************************
     public function Log(string $msg, string $type, bool $public = FALSE)
     {
         if ($type <= $this->LogLevel) {      // check loglevel
-            $entry = date("Ymd_H:i:s") . LOGTYPE::getMsg($type) . $msg . PHP_EOL;
+            $entry = date("Ymd_H:i:s") . LOGLEVEL::getMsg($type) . $msg . PHP_EOL;
             if (file_put_contents($this->LogFile, $entry, FILE_APPEND) === false)
                 $this->aPublicErrors[] = "Log() [ERROR] » Cannot write log file, check server logs for details!";
             if ($public)
@@ -54,13 +74,33 @@ class F4
         }
     }
 
+    //***********************************************************************
+    public function printArray($array)
+    {
+        print("<pre>" . print_r($array, true) . "</pre>");
+    }
+
+    //***********************************************************************
+    public function printSysInfo()
+    {
+        echo "<hr>";
+        echo "<h4>PHP MEMORY USAGE:<h4/>";
+        echo "<h5>memory_get_usage(false): <h5/>" . memory_get_usage(false);
+        echo "<h5>memory_get_usage(true): <h5/>" . memory_get_usage(true);
+        echo "<h5>memory_get_peak_usage(false): <h5/>" . memory_get_peak_usage(false);
+        echo "<h5>memory_get_peak_usage(true): <h5/>" . memory_get_peak_usage(true);
+
+        echo "<hr>";
+        echo "<h4>REQUEST INFO:<h4/>";
+        echo "<h5>REQUEST_URI: <h5/>" . $_SERVER['REQUEST_URI'];
+        echo "<h5>QUERY_STRING: <h5/>" . $_SERVER['QUERY_STRING'];
+    }
+
 
     /************************************************************************80
-		METHOD DESCRIPTION:
-		connect to a mysql/mariadb server
-
-        NOG NIET GETEST
-	*/
+		MYSQL STUFF
+		connect, query etc.
+     ************************************************************************/
     public function DB_mysqli_connect(string $dbname)
     {
         try {
@@ -71,49 +111,68 @@ class F4
 
             // print_r(PDO::getAvailableDrivers());
 
+            $dsn           = 'mysql:host=localhost;dbname=' . $dbname;
             $uname      = 'mysql';
             $pwd          = '0000';
-            $dsn           = 'mysql:host=localhost;dbname=' . $dbname;
             $db = new PDO($dsn, $uname, $pwd);
             $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-            return $db;
         } catch (PDOException $e) {
-            $this->Log("PDO exception: " . $e->getMessage(), LOGTYPE::ERROR);
+            $this->Log("PDO exception: " . $e->getMessage(), LOGLEVEL::ERROR);
+            return false;
         }
+        return $db;
     }
 
-        /************************************************************************80
-		METHOD DESCRIPTION:
-		connect to a mysql/mariadb server
 
-        NOG NIET GETEST
-	*/
+    /************************************************************************80
+		SQLITE STUFF
+		connect, query etc.
+     ************************************************************************/
+    //***********************************************************************
     public function DB_sqlite_connect(string $dbname)
     {
         try {
             $db = new PDO("sqlite:$dbname");
             $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-            return $db;
         } catch (PDOException $e) {
-            $this->Log("PDO exception: " . $e->getMessage(), LOGTYPE::ERROR);
+            $this->Log("PDO exception: " . $e->getMessage(), LOGLEVEL::ERROR);
+            return false;
+        }
+        return $db;
+    }
+    //***********************************************************************
+    public function DB_sqlite_execute(string $dbname, string $query, array $bindings = []): PDOStatement
+    {
+        $db = $this->DB_sqlite_connect($dbname);
+        $statement = $db->prepare($query);
+        // array(  ':userInput' => $_POST['userInput']  )
+        $result = $statement->execute($bindings);
+        if ($result) {
+            return $statement;
+        } else {
+            return false;
         }
     }
 
+
     /************************************************************************80
-		METHOD DESCRIPTION:
-		This function should ...
-	*/
-    public function out($text)
+		SANITIZATION & SECURITY STUFF
+		read:
+        - https://www.phptutorial.net/php-tutorial/php-sanitize-input/
+        - https://stackoverflow.com/questions/17166905/should-i-use-htmlspecialchars-or-mysql-real-escape-string-or-both
+        - 
+
+     ************************************************************************/
+    //***********************************************************************
+    // Use htmlspecialchars to protect against XSS attacks when you insert the data into an HTML document. Databases aren't HTML documents. (You might later take the data out of the database to put it into an HTML document, that is the time to use htmlspecialchars).
+    public function output($text)
     {
         echo htmlspecialchars($text);
     }
 
-    /************************************************************************80
-		METHOD DESCRIPTION:
-		csrf setter & checker
-	*/
+    //***********************************************************************
     public function set_csrf()
     {
         if (!isset($_SESSION["csrf"])) {
@@ -121,6 +180,8 @@ class F4
         }
         echo '<input type="hidden" name="csrf" value="' . $_SESSION["csrf"] . '">';
     }
+
+    //***********************************************************************
     public function is_csrf_valid()
     {
         if (!isset($_SESSION['csrf']) || !isset($_POST['csrf'])) {
@@ -132,86 +193,47 @@ class F4
         return true;
     }
 
+
     /************************************************************************80
-		METHOD DESCRIPTION:
-		output current memory usage
-	*/
-    public function MemUsage()
+		ROUTING STUFF
+		routing, url-manipulation etc.
+     ************************************************************************/
+    public function route($routeArray)
     {
-        echo "<h4>PHP MEMORY USAGE:<h4/>";
-        echo "<h5>memory_get_usage(false): <h5/>" . memory_get_usage(false);
-        echo "<h5>memory_get_usage(true): <h5/>" . memory_get_usage(true);
-        echo "<h5>memory_get_peak_usage(false): <h5/>" . memory_get_peak_usage(false);
-        echo "<h5>memory_get_peak_usage(true): <h5/>" . memory_get_peak_usage(true);
+        $request_url = $this->getNormalizedURL();
+        if (!filter_var($_SERVER['SCRIPT_URI'], FILTER_VALIDATE_URL)) {
+            $this->serveError('400', $routeArray);
+        } elseif (!array_key_exists($request_url, $routeArray)) {
+            $this->serveError('404', $routeArray);
+        } else {   // desired 
+            $this->servePage( $routeArray[$request_url],  $routeArray);
+        }
     }
 
-    /************************************************************************80
-		METHOD DESCRIPTION:
-		output request info
-	*/
-    public function RequestInfo()
+    public function getNormalizedURL()
     {
-        echo "<h4>REQUEST INFO:<h4/>";
-        echo "<h5>REQUEST_URI: <h5/>" . $_SERVER['REQUEST_URI'];
-        echo "<h5>QUERY_STRING: <h5/>" . $_SERVER['QUERY_STRING'];
+        $url_out = filter_var($_SERVER['REQUEST_URI'], FILTER_SANITIZE_URL);
+        $url_out = rtrim($url_out, " \n\r\t\v\0\\");
+        return $url_out;
+        // moet nog de url zo filteren dat lege // eruit worden gehaald, zoals SCRIPT_URI maar dan voor elke server geldig?
     }
 
-
-
-    /************************************************************************80
-		METHOD DESCRIPTION:
-		adapted from PHPRouter
-
-        MOMENTEEL NIET EFFICIENT! VOOR ELKE REQUEST&ROUTE WORDT DEZE FUNCTIE UITGEVOERD TOTDAT DE JUISTE IS GEVONDEN
-	*/
-    public function route($route, $path_to_include)
+    public function serveError(string $err, array $routeArray = [])
     {
-        $callback = $path_to_include;
-        if (!is_callable($callback)) {
-            if (!strpos($path_to_include, '.php')) {
-            }
+        if ($routeArray != [] && array_key_exists($err, $routeArray)) {   // if a custom template has been defined
+            $this->servePage($routeArray[$err]);
+        } else {
+            http_response_code($err);
+            echo "<h1>HTTP ERROR: $err</h1>";
         }
-        if ($route == "/404") {
-            require_once $path_to_include;
-            exit();
-        }
-        $request_url = filter_var($_SERVER['REQUEST_URI'], FILTER_SANITIZE_URL);
-        $request_url = rtrim($request_url, '/');
-        $request_url = strtok($request_url, '?');
-        $route_parts = explode('/', $route);
-        $request_url_parts = explode('/', $request_url);
-        array_shift($route_parts);
-        array_shift($request_url_parts);
-        if ($route_parts[0] == '' && count($request_url_parts) == 0) {
-            // Callback function
-            if (is_callable($callback)) {
-                call_user_func_array($callback, []);
-                exit();
-            }
-            require_once $path_to_include;
-            exit();
-        }
-        if (count($route_parts) != count($request_url_parts)) {
-            return;
-        }
-        $parameters = [];
-        for ($__i__ = 0; $__i__ < count($route_parts); $__i__++) {
-            $route_part = $route_parts[$__i__];
-            if (preg_match("/^[$]/", $route_part)) {
-                $route_part = ltrim($route_part, '$');
-                array_push($parameters, $request_url_parts[$__i__]);
-                $$route_part = $request_url_parts[$__i__];
-            } else if ($route_parts[$__i__] != $request_url_parts[$__i__]) {
-                return;
-            }
-        }
-        // Callback function
-        if (is_callable($callback)) {
-            call_user_func_array($callback, $parameters);
-            exit();
-        }
-        require_once $path_to_include;
         exit();
+    }
+
+    public function servePage($page,  $routeArray = [])
+    {
+        if(!file_exists($page)) $this->serveError(501, $routeArray);
+        require_once($page);
+        exit;
     }
 }
 
