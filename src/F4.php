@@ -1,6 +1,6 @@
 <?php
 
-/** version 0.8.0  */
+/** version 0.8.1  */
 
 class LOGLEVEL
 {
@@ -36,9 +36,9 @@ class F4
     private $LogFile;
     public $aPublicErrors;  // error-info available for end-user
 
+    function __construct(string $logdir, string $logfile = 'f4log_', int $loglevel = 1, bool $debug = FALSE)
     //***********************************************************************
     // NOTE: to use named arguments, PHP8+ is required
-    function __construct(string $logdir, string $logfile = 'f4log_', int $loglevel = 1, bool $debug = FALSE)
     {
         if ($debug) {
             /*	DISPLAY ERRORS */
@@ -53,11 +53,12 @@ class F4
         $this->session();
     }
 
+
+    private function session()
     //***********************************************************************
     // The Cookie Law is a piece of privacy legislation that requires websites to get consent from visitors to store or retrieve any information on a computer, smartphone or tablet.
     // There are other technologies, like Flash and HTML5 Local Storage that do similar things, and these are also covered by the legislation, but as cookies are the most common technology in use, it has become known as the Cookie Law.
     // Make sure your page has some cookie-option or notification
-    private function session()
     {
         session_start();
     }
@@ -74,14 +75,14 @@ class F4
         }
     }
 
-    //***********************************************************************
     public function printArray($array)
+    //***********************************************************************
     {
         print("<pre>" . print_r($array, true) . "</pre>");
     }
 
-    //***********************************************************************
     public function printSysInfo()
+    //***********************************************************************
     {
         echo "<hr>";
         echo "<h4>PHP MEMORY USAGE:<h4/>";
@@ -101,7 +102,9 @@ class F4
 		MYSQL STUFF
 		connect, query etc.
      ************************************************************************/
+
     public function DB_mysqli_connect(string $dbname)
+    //***********************************************************************
     {
         try {
             /*
@@ -129,8 +132,9 @@ class F4
 		SQLITE STUFF
 		connect, query etc.
      ************************************************************************/
-    //***********************************************************************
+
     public function DB_sqlite_connect(string $dbname)
+    //***********************************************************************
     {
         try {
             $db = new PDO("sqlite:$dbname");
@@ -142,8 +146,9 @@ class F4
         }
         return $db;
     }
-    //***********************************************************************
+
     public function DB_sqlite_execute(string $dbname, string $query, array $bindings = []): PDOStatement
+    //***********************************************************************
     {
         $db = $this->DB_sqlite_connect($dbname);
         $statement = $db->prepare($query);
@@ -165,15 +170,16 @@ class F4
         - 
 
      ************************************************************************/
+
+    public function output($text)
     //***********************************************************************
     // Use htmlspecialchars to protect against XSS attacks when you insert the data into an HTML document. Databases aren't HTML documents. (You might later take the data out of the database to put it into an HTML document, that is the time to use htmlspecialchars).
-    public function output($text)
     {
         echo htmlspecialchars($text);
     }
 
-    //***********************************************************************
     public function set_csrf()
+    //***********************************************************************
     {
         if (!isset($_SESSION["csrf"])) {
             $_SESSION["csrf"] = bin2hex(random_bytes(50));
@@ -181,8 +187,8 @@ class F4
         echo '<input type="hidden" name="csrf" value="' . $_SESSION["csrf"] . '">';
     }
 
-    //***********************************************************************
     public function is_csrf_valid()
+    //***********************************************************************
     {
         if (!isset($_SESSION['csrf']) || !isset($_POST['csrf'])) {
             return false;
@@ -206,11 +212,12 @@ class F4
         } elseif (!array_key_exists($request_url, $routeArray)) {
             $this->serveError('404', $routeArray);
         } else {   // desired 
-            $this->servePage( $routeArray[$request_url],  $routeArray);
+            $this->servePage($routeArray[$request_url],  $routeArray);
         }
     }
 
     public function getNormalizedURL()
+    //***********************************************************************
     {
         $url_out = filter_var($_SERVER['REQUEST_URI'], FILTER_SANITIZE_URL);
         $url_out = rtrim($url_out, " \n\r\t\v\0\\");
@@ -219,6 +226,7 @@ class F4
     }
 
     public function serveError(string $err, array $routeArray = [])
+    //***********************************************************************
     {
         if ($routeArray != [] && array_key_exists($err, $routeArray)) {   // if a custom template has been defined
             $this->servePage($routeArray[$err]);
@@ -230,8 +238,9 @@ class F4
     }
 
     public function servePage($page,  $routeArray = [])
+    //***********************************************************************
     {
-        if(!file_exists($page)) $this->serveError(501, $routeArray);
+        if (!file_exists($page)) $this->serveError(501, $routeArray);
         require_once($page);
         exit;
     }
